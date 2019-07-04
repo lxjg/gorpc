@@ -149,7 +149,7 @@ const (
 	DefaultDebugPath = "/debug/rpc"
 )
 
-var RequestScope requestScope
+var rs requestScope
 
 // Precompute the reflect type for error. Can't use error directly
 // because Typeof takes an empty interface value. This is annoying.
@@ -421,17 +421,19 @@ func (c *gobServerCodec) ReadRequestBody(body interface{}) error {
 
 func (c *gobServerCodec) WriteResponse(r *Response, body interface{}) (err error) {
 	// 处理事务
-	if r.Error != "" {
-		err = RequestScope.Tx().Rollback()
-	} else {
-		err = RequestScope.Tx().Commit()
-	}
-
-	if err != nil {
-		if c.encBuf.Flush() == nil {
-			c.Close()
+	if rs != nil {
+		if r.Error != "" {
+			err = rs.Tx().Rollback()
+		} else {
+			err = rs.Tx().Commit()
 		}
-		return
+
+		if err != nil {
+			if c.encBuf.Flush() == nil {
+				c.Close()
+			}
+			return
+		}
 	}
 
 	if err = c.enc.Encode(r); err != nil {
@@ -749,4 +751,8 @@ func (server *Server) HandleHTTP(rpcPath, debugPath string) {
 // It is still necessary to invoke http.Serve(), typically in a go statement.
 func HandleHTTP() {
 	DefaultServer.HandleHTTP(DefaultRPCPath, DefaultDebugPath)
+}
+
+func SetRS(rs requestScope) {
+	rs = rs
 }
