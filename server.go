@@ -399,6 +399,22 @@ func (s *service) call(server *Server, sending *sync.Mutex, wg *sync.WaitGroup, 
 	if errInter != nil {
 		errmsg = errInter.(error).Error()
 	}
+
+	// 处理事务
+	if rs != nil {
+		var err error
+		if errmsg != "" {
+			err = rs.Tx().Rollback()
+		} else {
+			err = rs.Tx().Commit()
+		}
+
+		if err != nil && errmsg == "" {
+			log.Println("transaction failed: ", err)
+			errmsg = err.Error()
+		}
+	}
+
 	server.sendResponse(sending, req, replyv.Interface(), codec, errmsg)
 	server.freeRequest(req)
 }
@@ -420,22 +436,6 @@ func (c *gobServerCodec) ReadRequestBody(body interface{}) error {
 }
 
 func (c *gobServerCodec) WriteResponse(r *Response, body interface{}) (err error) {
-	// 处理事务
-	if rs != nil {
-		if r.Error != "" {
-			err = rs.Tx().Rollback()
-		} else {
-			err = rs.Tx().Commit()
-		}
-
-		if err != nil {
-			if c.encBuf.Flush() == nil {
-				c.Close()
-			}
-			return
-		}
-	}
-
 	if err = c.enc.Encode(r); err != nil {
 		if c.encBuf.Flush() == nil {
 			// Gob couldn't encode the header. Should not happen, so if it does,
